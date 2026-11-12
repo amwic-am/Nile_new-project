@@ -1,0 +1,19 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.local
+.env.example2
+server/data/
+server/uploads/*
+!server/uploads/.gitkeep
+*.log
+.DS_Store
+Thumbs.db
+# Raw image-generation sources (the optimized assets live in frontend/public and
+# server/uploads/seed)
+vibe_images/
+
+.vercel
+.wrangler/
+.dev.vars
