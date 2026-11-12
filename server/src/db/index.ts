@@ -1,3 +1,4 @@
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { config, repoRoot } from '../config.js';
@@ -9,7 +10,10 @@ export interface QueryResult<T = Record<string, unknown>> {
 }
 
 export interface Sql {
-  query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<QueryResult<T>>;
+  query<T = Record<string, unknown>>(
+    text: string,
+    params?: unknown[],
+  ): Promise<QueryResult<T>>;
   exec(sql: string): Promise<void>;
 }
 
@@ -29,10 +33,12 @@ class SerialQueue {
 
   run<T>(fn: () => Promise<T>): Promise<T> {
     const result = this.tail.then(fn, fn);
+
     this.tail = result.then(
       () => undefined,
       () => undefined,
     );
+
     return result;
   }
 
@@ -44,12 +50,21 @@ class SerialQueue {
 class PgliteDriver implements Driver {
   private queue = new SerialQueue();
 
-  constructor(private readonly db: import('@electric-sql/pglite').PGlite) {}
+  constructor(
+    private readonly db: import('@electric-sql/pglite').PGlite,
+  ) {}
 
-  query<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<QueryResult<T>> {
+  query<T = Record<string, unknown>>(
+    text: string,
+    params: unknown[] = [],
+  ): Promise<QueryResult<T>> {
     return this.queue.run(async () => {
       const result = await this.db.query<T>(text, params as never[]);
-      return { rows: result.rows, rowCount: result.affectedRows ?? result.rows.length };
+
+      return {
+        rows: result.rows,
+        rowCount: result.affectedRows ?? result.rows.length,
+      };
     });
   }
 
@@ -63,14 +78,23 @@ class PgliteDriver implements Driver {
     return this.queue.run(async () =>
       this.db.transaction(async (tx) => {
         const sql: Sql = {
-          query: async <R = Record<string, unknown>>(text: string, params: unknown[] = []) => {
+          query: async <R = Record<string, unknown>>(
+            text: string,
+            params: unknown[] = [],
+          ) => {
             const result = await tx.query<R>(text, params as never[]);
-            return { rows: result.rows, rowCount: result.affectedRows ?? result.rows.length };
+
+            return {
+              rows: result.rows,
+              rowCount: result.affectedRows ?? result.rows.length,
+            };
           },
+
           exec: async (text: string) => {
             await tx.exec(text);
           },
         };
+
         return fn(sql);
       }),
     );
@@ -84,9 +108,16 @@ class PgliteDriver implements Driver {
 class PgDriver implements Driver {
   constructor(private readonly pool: import('pg').Pool) {}
 
-  async query<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<QueryResult<T>> {
+  async query<T = Record<string, unknown>>(
+    text: string,
+    params: unknown[] = [],
+  ): Promise<QueryResult<T>> {
     const result = await this.pool.query(text, params);
-    return { rows: result.rows as T[], rowCount: result.rowCount ?? result.rows.length };
+
+    return {
+      rows: result.rows as T[],
+      rowCount: result.rowCount ?? result.rows.length,
+    };
   }
 
   async exec(sql: string): Promise<void> {
@@ -96,30 +127,46 @@ class PgDriver implements Driver {
   async transaction<T>(fn: (tx: Sql) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
     const queue = new SerialQueue();
+
     try {
       await client.query('BEGIN');
+
       const sql: Sql = {
-        query: <R = Record<string, unknown>>(text: string, params: unknown[] = []) =>
+        query: <R = Record<string, unknown>>(
+          text: string,
+          params: unknown[] = [],
+        ) =>
           queue.run(async () => {
             const result = await client.query(text, params);
-            return { rows: result.rows as R[], rowCount: result.rowCount ?? result.rows.length };
+
+            return {
+              rows: result.rows as R[],
+              rowCount: result.rowCount ?? result.rows.length,
+            };
           }),
+
         exec: (text: string) =>
           queue.run(async () => {
             await client.query(text);
           }),
       };
+
       const result = await fn(sql);
+
       await queue.wait();
       await client.query('COMMIT');
+
       return result;
     } catch (error) {
       try {
         await queue.wait();
         await client.query('ROLLBACK');
       } catch (rollbackError) {
-        logger.error('Failed to roll back transaction', { error: String(rollbackError) });
+        logger.error('Failed to roll back transaction', {
+          error: String(rollbackError),
+        });
       }
+
       throw error;
     } finally {
       client.release();
@@ -134,7 +181,10 @@ class PgDriver implements Driver {
 export class Database implements Sql {
   constructor(private readonly driver: Driver) {}
 
-  query<T = Record<string, unknown>>(text: string, params?: unknown[]) {
+  query<T = Record<string, unknown>>(
+    text: string,
+    params?: unknown[],
+  ) {
     return this.driver.query<T>(text, params);
   }
 
@@ -148,18 +198,27 @@ export class Database implements Sql {
   }
 
   /**
-   * End-user transaction. Runs as the restricted `nilemart_app` role with RLS
-   * enforced, using session-local variables for identity and permissions.
+   * End-user transaction.
+   * Runs as restricted nilemart_app role with RLS enforced.
    */
-  requestContext<T>(context: RequestContext, fn: (tx: Sql) => Promise<T>): Promise<T> {
+  requestContext<T>(
+    context: RequestContext,
+    fn: (tx: Sql) => Promise<T>,
+  ): Promise<T> {
     return this.driver.transaction(async (tx) => {
       await tx.exec('set local role nilemart_app');
+
       await tx.query(
         `select set_config('app.user_id', $1, true),
                 set_config('app.perms', $2, true),
                 set_config('app.guest_token', $3, true)`,
-        [context.userId ?? '', (context.perms ?? []).join(','), context.guestToken ?? ''],
+        [
+          context.userId ?? '',
+          (context.perms ?? []).join(','),
+          context.guestToken ?? '',
+        ],
       );
+
       return fn(tx);
     });
   }
@@ -171,14 +230,27 @@ export class Database implements Sql {
 
 let databasePromise: Promise<Database> | null = null;
 
-async function createDatabase(databaseUrl = config.databaseUrl): Promise<Database> {
+async function createDatabase(
+  databaseUrl = config.databaseUrl,
+): Promise<Database> {
   if (databaseUrl) {
     const { Pool } = await import('pg');
+
     const ca = config.databaseSslCa
       ? config.databaseSslCa.includes('-----BEGIN CERTIFICATE-----')
         ? config.databaseSslCa
-        : fs.readFileSync(path.resolve(repoRoot, config.databaseSslCa), 'utf8')
+        : fs.readFileSync(
+            path.resolve(repoRoot, config.databaseSslCa),
+            'utf8',
+          )
       : undefined;
+
+    /**
+     * SSL configuration:
+     * - disable: disables SSL.
+     * - require: encrypts the connection without certificate verification.
+     * - verify: validates against the configured CA or system trust store.
+     */
     const ssl =
       config.databaseSsl === 'disable'
         ? false
@@ -186,37 +258,48 @@ async function createDatabase(databaseUrl = config.databaseUrl): Promise<Databas
             rejectUnauthorized: config.databaseSslRejectUnauthorized,
             ...(ca ? { ca } : {}),
           };
+
     const pool = new Pool({
       connectionString: databaseUrl,
       ssl,
       max: 10,
+      connectionTimeoutMillis: 15000,
+      idleTimeoutMillis: 30000,
     });
+
     try {
       await pool.query('select 1');
     } catch (error) {
       await pool.end();
       throw error;
     }
+
     logger.info('Connected to PostgreSQL');
+
     return new Database(new PgDriver(pool));
   }
 
   fs.mkdirSync(config.pgliteDataDir, { recursive: true });
+
   const { PGlite } = await import('@electric-sql/pglite');
+
   const pglite = await PGlite.create(config.pgliteDataDir);
-  logger.info('Using embedded PostgreSQL (PGlite)', { dataDir: config.pgliteDataDir });
+
+  logger.info('Using embedded PostgreSQL (PGlite)', {
+    dataDir: config.pgliteDataDir,
+  });
+
   return new Database(new PgliteDriver(pglite));
 }
 
 export async function getDatabase(): Promise<Database> {
-  // Cache the promise so concurrent first requests cannot open separate
-  // connections (PGlite only supports one process per data directory).
   if (!databasePromise) {
     databasePromise = createDatabase().catch((error) => {
       databasePromise = null;
       throw error;
     });
   }
+
   return databasePromise;
 }
 
@@ -228,8 +311,10 @@ export async function getMigrationDatabase(): Promise<Database> {
 
 export async function closeDatabase() {
   if (!databasePromise) return;
+
   const pending = databasePromise;
   databasePromise = null;
+
   try {
     const db = await pending;
     await db.close();
