@@ -230,6 +230,26 @@ export class Database implements Sql {
 
 let databasePromise: Promise<Database> | null = null;
 
+function connectionStringWithoutSslOptions(connectionString: string): string {
+  const scheme = connectionString.slice(0, connectionString.indexOf(':')).toLowerCase();
+  if (scheme !== 'postgres' && scheme !== 'postgresql') return connectionString;
+
+  const url = new URL(connectionString);
+  const sslParameters = new Set([
+    'ssl',
+    'sslcert',
+    'sslkey',
+    'sslmode',
+    'sslnegotiation',
+    'sslrootcert',
+    'uselibpqcompat',
+  ]);
+  for (const key of [...url.searchParams.keys()]) {
+    if (sslParameters.has(key.toLowerCase())) url.searchParams.delete(key);
+  }
+  return url.toString();
+}
+
 async function createDatabase(
   databaseUrl = config.databaseUrl,
 ): Promise<Database> {
@@ -260,7 +280,7 @@ async function createDatabase(
           };
 
     const pool = new Pool({
-      connectionString: databaseUrl,
+      connectionString: connectionStringWithoutSslOptions(databaseUrl),
       ssl,
       max: 10,
       connectionTimeoutMillis: 15000,
