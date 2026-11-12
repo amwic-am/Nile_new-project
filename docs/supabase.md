@@ -43,14 +43,15 @@ API** copy:
 From **Project Settings → Database** copy both pooler connection strings. Use
 the shared transaction pooler (port `6543`, usually with `?pgbouncer=true`) for
 `DATABASE_URL`, and the session pooler (port `5432`) for `DIRECT_URL`. Both use
-the pooler hostname, which works on IPv4-only networks. Keep
-`DATABASE_SSL=require`. The migration command uses `DIRECT_URL` when present
-and falls back to `DATABASE_URL` otherwise.
+the pooler hostname, which works on IPv4-only networks. The migration command
+uses `DIRECT_URL` when present and falls back to `DATABASE_URL` otherwise.
 
-For certificate verification, download the database root certificate from
-**Project Settings → Database → SSL Configuration** and set
-`DATABASE_SSL_CA` to its local file path. Keep `DATABASE_SSL=require`; do not
-disable certificate verification for a production connection.
+`DATABASE_SSL=require` encrypts the connection but does not verify the server's
+certificate. For verified TLS, download the database root certificate from
+**Project Settings → Database → SSL Configuration**, set `DATABASE_SSL=verify`,
+and set `DATABASE_SSL_CA` to either the local certificate path or its PEM
+contents (use the PEM contents for hosts where you cannot mount a certificate
+file). Do not use `DATABASE_SSL=no-verify` in production.
 
 Never put `SUPABASE_SERVICE_ROLE_KEY` in `frontend/`, in `VITE_*` variables, or
 in a static build. It bypasses RLS and Storage policies.

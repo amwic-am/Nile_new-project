@@ -222,8 +222,8 @@ precedence for local-only settings. The most important variables:
 | `API_URL` | Public API origin; used for payment callbacks/webhooks |
 | `DATABASE_URL` | App PostgreSQL URL (Supabase transaction pooler); empty uses embedded PGlite |
 | `DIRECT_URL` | Optional session-mode PostgreSQL URL used by `npm run db:migrate` |
-| `DATABASE_SSL` | `require` (default when a URL is set), `disable`, `no-verify` |
-| `DATABASE_SSL_CA` | Optional local path to the Supabase root certificate for verified TLS |
+| `DATABASE_SSL` | `require` encrypts without certificate verification; use `verify` with a trusted CA to verify the server |
+| `DATABASE_SSL_CA` | Optional path or PEM contents of the Supabase root certificate (for `DATABASE_SSL=verify`) |
 | `AUTH_PROVIDER` | `supabase` or `local`; defaults to `supabase` when Supabase env vars are set, `local` otherwise. Production refuses `local` |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Server-side Supabase Auth; the anon key never reaches the browser |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only: Storage uploads, admin user creation, demo seeding |

@@ -31,6 +31,9 @@ const databaseUrl = str(process.env.DATABASE_URL);
 const directDatabaseUrl = str(process.env.DIRECT_URL);
 const databaseSsl = str(process.env.DATABASE_SSL, databaseUrl ? 'require' : 'disable');
 const databaseSslCa = str(process.env.DATABASE_SSL_CA);
+if (!['disable', 'require', 'verify', 'no-verify'].includes(databaseSsl)) {
+  throw new Error('DATABASE_SSL must be "disable", "require", "verify", or "no-verify".');
+}
 const supabaseUrl = str(process.env.SUPABASE_URL).replace(/\/+$/, '');
 const supabaseAnonKey = str(process.env.SUPABASE_ANON_KEY);
 const supabaseServiceRoleKey = str(process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -57,8 +60,8 @@ export const config = {
   databaseUrl,
   directDatabaseUrl,
   databaseSsl,
-  databaseSslRejectUnauthorized: databaseSsl !== 'no-verify',
-  databaseSslCa: databaseSslCa ? path.resolve(repoRoot, databaseSslCa) : '',
+  databaseSslRejectUnauthorized: databaseSsl === 'verify',
+  databaseSslCa,
   authProvider,
   supabase: {
     url: supabaseUrl,

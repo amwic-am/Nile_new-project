@@ -1,5 +1,6 @@
 import fs from 'node:fs';
-import { config } from '../config.js';
+import path from 'node:path';
+import { config, repoRoot } from '../config.js';
 import { logger } from '../lib/logger.js';
 
 export interface QueryResult<T = Record<string, unknown>> {
@@ -173,18 +174,29 @@ let databasePromise: Promise<Database> | null = null;
 async function createDatabase(databaseUrl = config.databaseUrl): Promise<Database> {
   if (databaseUrl) {
     const { Pool } = await import('pg');
+    const ca = config.databaseSslCa
+      ? config.databaseSslCa.includes('-----BEGIN CERTIFICATE-----')
+        ? config.databaseSslCa
+        : fs.readFileSync(path.resolve(repoRoot, config.databaseSslCa), 'utf8')
+      : undefined;
     const ssl =
       config.databaseSsl === 'disable'
         ? false
         : {
             rejectUnauthorized: config.databaseSslRejectUnauthorized,
-            ...(config.databaseSslCa ? { ca: fs.readFileSync(config.databaseSslCa, 'utf8') } : {}),
+            ...(ca ? { ca } : {}),
           };
     const pool = new Pool({
       connectionString: databaseUrl,
       ssl,
       max: 10,
     });
+    try {
+      await pool.query('select 1');
+    } catch (error) {
+      await pool.end();
+      throw error;
+    }
     logger.info('Connected to PostgreSQL');
     return new Database(new PgDriver(pool));
   }
